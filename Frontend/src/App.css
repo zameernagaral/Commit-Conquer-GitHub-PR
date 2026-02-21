@@ -33,7 +33,7 @@ body {
 .sidebar { background: var(--bg-main); border-right: 1px solid var(--border-light); padding: 32px 24px; display: flex; flex-direction: column; }
 .brand { font-size: 16px; font-weight: 600; color: var(--text-main); margin-bottom: 32px; letter-spacing: -0.2px; }
 .main-content {
-   padding: 40px; 
+   padding: 25px; 
    overflow-y: auto;
    }
 .pr-list {
@@ -102,6 +102,7 @@ body {
     z-index: 1000; 
   }
 .modal { 
+  position: relative;
   background: var(--bg-card);
    width: 95%; 
    max-width: 1100px; 
@@ -112,9 +113,41 @@ body {
     overflow: hidden; 
     border: 1px solid var(--border-light);
    }
-.modal-left { width: 70%; border-right: 1px solid var(--border-light); display: flex; flex-direction: column; background: #fdfdfd; }
+
+.modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 6px;
+  border-radius: 8px;
+  transition: background 0.2s, color 0.2s;
+}
+
+.modal-close:hover {
+  background: var(--border-light);
+  color: var(--text-main);
+}
+.modal-left {
+  width: 70%;
+  border-right: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  background: #fdfdfd;
+  padding-bottom: 24px;
+}
 .diff-header { padding: 16px 24px; border-bottom: 1px solid var(--border-light); display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); }
-.diff-viewer { padding: 24px; overflow-y: auto; font-family: 'Menlo', monospace; font-size: 13px; line-height: 1.6; flex-grow: 1; }
+.diff-viewer {
+  padding: 24px;
+  overflow-y: auto;
+  font-family: 'Menlo', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  flex-grow: 1;
+}
 .diff-line { 
   display: flex;
    padding: 0 8px; 
@@ -185,3 +218,30 @@ body {
 .btn-approve:disabled { background: var(--border-light); color: var(--text-muted); cursor: not-allowed; }
 .btn-reject { flex: 1; background: transparent; color: var(--status-rejected-text); border: 1px solid #f5c2c7; padding: 12px; border-radius: 12px; font-weight: 500; cursor: pointer; }
 .btn-reject:hover { background: var(--status-rejected-bg); }
+
+.btn-copy-left {
+  background: transparent;
+  color: var(--status-rejected-text);
+  border: 1px solid #f5c2c7;
+  padding: 12px;
+  border-radius: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  width: 160px; 
+  transition: background 0.2s;
+  transition: all 0.2s ease;
+}
+
+.btn-copy-left:hover {
+  background: var(--status-rejected-bg);
+}
+
+.btn-copy-left.copied {
+  background: var(--status-merged-bg);
+  border: 1px solid var(--status-merged-text);
+  color: var(--status-merged-text);
+}
+
+.btn-copy-left:active {
+  transform: scale(0.97);
+}
