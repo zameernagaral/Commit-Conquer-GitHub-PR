@@ -1,11 +1,37 @@
-import  { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Bell } from 'lucide-react';
 
 export default function NotificationBell({ items = [], onClear, onClickItem }) {
   const [isOpen, setIsOpen] = useState(false);
+  const wrapperRef = useRef(null);
+
+  useEffect(() => {
+  function handleClickOutside(event) {
+    if (
+      wrapperRef.current &&
+      !wrapperRef.current.contains(event.target)
+    ) {
+      setIsOpen(false);
+    }
+  }
+
+  function handleEsc(event) {
+    if (event.key === "Escape") {
+      setIsOpen(false);
+    }
+  }
+
+  document.addEventListener("mousedown", handleClickOutside);
+  document.addEventListener("keydown", handleEsc);
+
+  return () => {
+    document.removeEventListener("mousedown", handleClickOutside);
+    document.removeEventListener("keydown", handleEsc);
+  };
+}, [isOpen]);
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div ref={wrapperRef} style={{ position: 'relative' }}>
       <button 
         onClick={() => setIsOpen(!isOpen)} 
         style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', position: 'relative', padding: '4px' }}
