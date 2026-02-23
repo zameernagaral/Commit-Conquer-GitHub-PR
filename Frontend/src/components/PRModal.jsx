@@ -10,7 +10,7 @@ export default function PRModal({
 }) {
   const [comment, setComment] = useState("");
   const [copied, setCopied] = useState(false);
-  
+    
   useEffect(() => {
     const handleEsc = (e) => {
       if (e.key === "Escape") onClose();
