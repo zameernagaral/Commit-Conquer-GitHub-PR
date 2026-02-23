@@ -12,6 +12,8 @@ import {
   ChevronsLeftRightEllipsis,
   GitPullRequest,
   Users,
+  Menu,
+  X as XIcon,
 } from "lucide-react";
 
 export default function App() {
@@ -25,6 +27,7 @@ export default function App() {
   const [timeLeft, setTimeLeft] = useState(2 * 3600 + 14 * 60 + 23);
 
   const [currentView, setCurrentView] = useState("prs");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const isLocked = timeLeft <= 0;
 
@@ -240,8 +243,23 @@ export default function App() {
 
   return (
     <div className="app-container">
-      <aside className="sidebar">
-        <div className="brand">Commit & Conquer</div>
+      {/* Mobile overlay */}
+      <div
+        className={`sidebar-overlay ${sidebarOpen ? "open" : ""}`}
+        onClick={() => setSidebarOpen(false)}
+      />
+      <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
+        <div className="brand" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>Commit & Conquer</span>
+          <button
+            className="hamburger"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Close menu"
+            style={{ marginRight: "-4px" }}
+          >
+            <XIcon size={20} />
+          </button>
+        </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           <div
@@ -258,7 +276,7 @@ export default function App() {
           </div>
 
           <button
-            onClick={() => setCurrentView("prs")}
+            onClick={() => { setCurrentView("prs"); setSidebarOpen(false); }}
             style={{
               display: "flex",
               alignItems: "center",
@@ -291,7 +309,7 @@ export default function App() {
           </button>
 
           <button
-            onClick={() => setCurrentView("teams")}
+            onClick={() => { setCurrentView("teams"); setSidebarOpen(false); }}
             style={{
               display: "flex",
               alignItems: "center",
@@ -320,15 +338,15 @@ export default function App() {
       </aside>
 
       <main className="main-content">
-        <header
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: "32px",
-          }}
-        >
-          <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+        <header className="main-header">
+          <div className="header-left">
+            <button
+              className="hamburger"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Open menu"
+            >
+              <Menu size={22} />
+            </button>
             <input
               type="text"
               placeholder={
@@ -336,21 +354,13 @@ export default function App() {
                   ? "Search submissions..."
                   : "Search teams..."
               }
-              style={{
-                background: "#fff",
-                border: "1px solid var(--border-light)",
-                padding: "10px 16px",
-                borderRadius: "12px",
-                width: "260px",
-                fontSize: "13px",
-                outline: "none",
-              }}
+              className="header-search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
 
             {currentView === "prs" && (
-              <div style={{ display: "flex", gap: "8px" }}>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                 {["all", "merged", "pending"].map((status) => (
                   <button
                     key={status}
@@ -377,11 +387,10 @@ export default function App() {
             )}
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
+          <div className="header-right">
             <div
+              className="header-timer"
               style={{
-                fontSize: "13px",
-                fontWeight: "500",
                 color: isLocked
                   ? "var(--status-rejected-text)"
                   : "var(--text-main)",
@@ -399,16 +408,7 @@ export default function App() {
               )}
             </div>
 
-            <div
-              style={{
-                fontSize: "13px",
-                fontWeight: "500",
-                color: "var(--text-main)",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-              }}
-            >
+            <div className="header-online" style={{ color: "var(--text-main)" }}>
               <ChevronsLeftRightEllipsis size={16} /> {teamsOnline} Teams Online
             </div>
             <NotificationBell
