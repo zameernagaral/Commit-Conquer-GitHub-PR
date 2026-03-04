@@ -111,32 +111,11 @@ export default function App() {
       }
     };
     window.__gh_ws.handlers.push(handler);
-    const membersList = ["AK", "JS", "MR", "NK"];
-    const demoInterval = setInterval(() => {
-      if (!isLocked) {
-        handler({
-          type: "new_pr",
-          pr: {
-            id: Math.random().toString(),
-            team: `Team ${Math.floor(Math.random() * 20) + 1}`,
-            title: "Refactored auth middleware",
-            status: "open",
-            timestamp: Date.now(),
-            mergedCount: 0,
-            members: [
-              membersList[Math.floor(Math.random() * 4)],
-              membersList[Math.floor(Math.random() * 4)],
-            ],
-          },
-        });
-      }
-    }, 25000);
 
     return () => {
       window.__gh_ws.handlers = window.__gh_ws.handlers.filter(
         (h) => h !== handler,
       );
-      clearInterval(demoInterval);
     };
   }, [loadData, isLocked]);
 
@@ -166,10 +145,7 @@ export default function App() {
       3000,
     );
     try {
-      await fetch(`${API_CONFIG.BASE}/approve/${prId}`, {
-        method: "POST",
-        body: JSON.stringify({ comment }),
-      });
+      await fetch(`${API_CONFIG.BASE}/pr/${API_CONFIG.REPO_NAME}/${prId}/approve`, { method: 'POST', body: JSON.stringify({ comment }) });
     } catch (e) {}
   };
 
@@ -195,10 +171,7 @@ export default function App() {
       3000,
     );
     try {
-      await fetch(`${API_CONFIG.BASE}/reject/${prId}`, {
-        method: "POST",
-        body: JSON.stringify({ comment }),
-      });
+      await fetch(`${API_CONFIG.BASE}/pr/${API_CONFIG.REPO_NAME}/${prId}/reject`, { method: 'POST', body: JSON.stringify({ comment }) });
     } catch (e) {}
   };
 
