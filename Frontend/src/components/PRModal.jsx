@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { X } from "lucide-react"
+import { X, Loader } from "lucide-react";
+import { API_CONFIG } from "../services/api";
 
 export default function PRModal({
   pr,
@@ -10,7 +11,8 @@ export default function PRModal({
 }) {
   const [comment, setComment] = useState("");
   const [copied, setCopied] = useState(false);
-    
+  const [diffLines, setDiffLines] = useState([]);
+  const [loadingDiff, setLoadingDiff] = useState(true);
   useEffect(() => {
     const handleEsc = (e) => {
       if (e.key === "Escape") onClose();
@@ -18,110 +20,108 @@ export default function PRModal({
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   }, [onClose]);
+  useEffect(() => {
+    if (!pr) return;
+    
+    const fetchDiff = async () => {
+      try {
+        setLoadingDiff(true);
+        const res = await fetch(`${API_CONFIG.BASE}/pr/${pr.repo}/${pr.id}`);
+        
+        if (res.ok) {
+          const data = await res.json();
+          const lines = data.diff.split('\n').map((text, idx) => {
+            let type = 'normal';
+            if (text.startsWith('+')) type = 'add';
+            else if (text.startsWith('-')) type = 'remove';
+            return { num: idx + 1, type, text };
+          });
+          setDiffLines(lines);
+        } else {
+          setDiffLines([{ num: 1, type: "normal", text: "No code changes detected or error fetching diff." }]);
+        }
+      } catch (err) {
+        setDiffLines([{ num: 1, type: "remove", text: "Failed to connect to backend API." }]);
+      } finally {
+        setLoadingDiff(false);
+      }
+    };
+
+    fetchDiff();
+  }, [pr]);
 
   if (!pr) return null;
 
-  const simulatedDiff = [
-    { num: 42, type: "normal", text: "  function calculateScore(data) {" },
-    { num: 43, type: "remove", text: "-   let score = data.points;" },
-    {
-      num: 44,
-      type: "add",
-      text: "+   const score = data.points * data.multiplier;",
-    },
-    { num: 45, type: "add", text: "+   if (score < 0) return 0;" },
-    { num: 46, type: "normal", text: "    return score;" },
-    { num: 47, type: "normal", text: "  }" },
-  ];
-
   const handleCopyAdded = async () => {
-  const finalCode = simulatedDiff
-    .filter(line => line.type !== 'remove')
-    .map(line => {
-      if (line.type === 'add') {
-        return line.text.replace(/^\+\s?/, '');
-      }
-      return line.text;
-    })
-    .join('\n');
+    const finalCode = diffLines
+      .filter(line => line.type !== 'remove')
+      .map(line => {
+        if (line.type === 'add') {
+          return line.text.replace(/^\+\s?/, '');
+        }
+        return line.text;
+      })
+      .join('\n');
 
-  try {
-    await navigator.clipboard.writeText(finalCode);
-    setCopied(true);
-
-    setTimeout(() => {
-      setCopied(false);
-    }, 2000);
-
-  } catch (err) {
-    console.error('Copy failed', err);
-  }
-};
+    try {
+      await navigator.clipboard.writeText(finalCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Copy failed', err);
+    }
+  };
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <button
-    className="modal-close"
-    onClick={onClose}
-  >
-    <X size={18} />
-  </button>
+        <button className="modal-close" onClick={onClose}>
+          <X size={18} />
+        </button>
         <div className="modal-left">
-  <div>
-    <div className="diff-header">
-      <div>
-        <div style={{ fontSize: '15px', fontWeight: '500', color: 'var(--text-main)' }}>
-          {pr.title}
-        </div>
-        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
-          Issue #{Math.floor(Math.random() * 800) + 100} • src/utils/calculator.js
-        </div>
-      </div>
-    </div>
+          <div>
+            <div className="diff-header">
+              <div>
+                <div style={{ fontSize: '15px', fontWeight: '500', color: 'var(--text-main)' }}>
+                  {pr.title}
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Issue #{pr.id} • Repo: {pr.repo}
+                </div>
+              </div>
+            </div>
 
-    <div className="diff-viewer">
-      {simulatedDiff.map((line, idx) => (
-        <div key={idx} className={`diff-line ${line.type}`}>
-          <div className="diff-line-num">{line.num}</div>
-          <div style={{ whiteSpace: 'pre' }}>{line.text}</div>
+            <div className="diff-viewer">
+              {loadingDiff ? (
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', color: 'var(--text-muted)' }}>
+                  <Loader className="animate-spin" size={16} /> Fetching live code from GitHub...
+                </div>
+              ) : (
+                diffLines.map((line, idx) => (
+                  <div key={idx} className={`diff-line ${line.type}`}>
+                    <div className="diff-line-num">{line.num}</div>
+                    <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{line.text}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+          <div style={{ padding: '0 24px 24px 24px', marginTop: 'auto' }}>
+            <button
+              className={`btn-copy-left ${copied ? "copied" : ""}`}
+              onClick={handleCopyAdded}
+              disabled={loadingDiff}
+            >
+              {copied ? "✓ Copied" : "Copy Added Changes"}
+            </button>
+          </div>
         </div>
-      ))}
-    </div>
-  </div>
-  <div style={{ padding: '0 24px 24px 24px' }}>
-  <button
-  className={`btn-copy-left ${copied ? "copied" : ""}`}
-  onClick={handleCopyAdded}
->
-  {copied ? "✓ Copied" : "Copy Added Changes"}
-</button>
-</div>
-</div>
+        
         <div className="modal-right">
           <div className="eval-section">
             <span className="eval-label">Team Info</span>
-            <div
-              style={{
-                fontSize: "18px",
-                fontWeight: "600",
-                marginBottom: "4px",
-              }}
-            >
+            <div style={{ fontSize: "18px", fontWeight: "600", marginBottom: "4px" }}>
               {pr.team}
-            </div>
-            <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-              Members: {pr.members ? pr.members.join(", ") : "Hidden"}
-            </div>
-          </div>
-
-          <div className="eval-section">
-            <span className="eval-label">Automated Checks</span>
-            <div className="linter-check">
-              <span style={{ color: "#22863a" }}>✓</span> Linter passed
-            </div>
-            <div className="linter-check">
-              <span style={{ color: "#22863a" }}>✓</span> Build successful
             </div>
           </div>
 
@@ -132,15 +132,9 @@ export default function PRModal({
               onChange={(e) => setComment(e.target.value)}
               placeholder="Leave a note before resolving..."
               style={{
-                width: "100%",
-                height: "100px",
-                padding: "12px",
-                borderRadius: "12px",
-                border: "1px solid var(--border-light)",
-                fontSize: "13px",
-                fontFamily: "inherit",
-                resize: "none",
-                outline: "none",
+                width: "100%", height: "100px", padding: "12px",
+                borderRadius: "12px", border: "1px solid var(--border-light)",
+                fontSize: "13px", fontFamily: "inherit", resize: "none", outline: "none"
               }}
             />
           </div>
@@ -158,11 +152,7 @@ export default function PRModal({
               onClick={() => onApprove(pr.id, comment)}
               disabled={pr.status !== "open" || isLocked}
             >
-              {isLocked
-                ? "Submissions Locked"
-                : pr.status === "open"
-                  ? "Approve PR"
-                  : "Resolved"}
+              {isLocked ? "Submissions Locked" : pr.status === "open" ? "Approve PR" : "Resolved"}
             </button>
           </div>
         </div>

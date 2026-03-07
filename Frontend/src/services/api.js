@@ -1,9 +1,7 @@
 
-
 export const API_CONFIG = {
-  BASE: "http://localhost:8000/api",
-  WS: "ws://localhost:8000/api/live",
-  REPO_NAME: "commit-conquer" 
+  BASE: "http://127.0.0.1:8000/api",
+  WS: "ws://127.0.0.1:8000/api/live"
 };
 
 export const fetchAllPRs = async () => {

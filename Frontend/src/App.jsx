@@ -54,125 +54,126 @@ export default function App() {
     fetchAllPRs().then((data) => setPrs(data));
   }, []);
 
-  useEffect(() => {
+useEffect(() => {
     loadData();
 
-    if (!window.__gh_ws) {
-      window.__gh_ws = { socket: null, handlers: [] };
-      const makeWS = () => {
-        const s = new WebSocket(API_CONFIG.WS);
-        s.onmessage = (ev) => {
-          try {
-            window.__gh_ws.handlers.forEach((h) => h(JSON.parse(ev.data)));
-          } catch (e) {}
-        };
-        window.__gh_ws.socket = s;
+    let ws;
+    let reconnectTimer;
+    const connectWebSocket = () => {
+      ws = new WebSocket(API_CONFIG.WS);
+
+      ws.onopen = () => {
+        console.log("WebSocket Connected!");
       };
-      try {
-        makeWS();
-      } catch (e) {}
-    }
 
-    const handler = (msg) => {
-      if (msg.type === "new_pr" && !isLocked) {
-        setPrs((prev) => [msg.pr, ...prev]);
-        setNotifications((prev) => [
-          {
-            id: Date.now(),
-            team: msg.pr.team,
-            title: msg.pr.title,
-            pr: msg.pr,
-          },
-          ...prev,
-        ]);
-        const toastId = Date.now();
-        setToasts((prev) => [
-          ...prev,
-          { id: toastId, text: `${msg.pr.team} submitted a PR` },
-        ]);
-        setTimeout(
-          () => setToasts((prev) => prev.filter((t) => t.id !== toastId)),
-          4000,
-        );
-      } else if (msg.type === "status_update") {
-        setPrs((prev) =>
-          prev.map((p) =>
-            p.id === msg.prId
-              ? {
-                  ...p,
-                  status: msg.status,
-                  mergedCount: msg.newCount || p.mergedCount,
-                }
-              : p,
-          ),
-        );
-      } else if (msg.type === "teams_online") {
-        setTeamsOnline(msg.count);
-      }
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          
+          if (msg.type === "new_pr" && !isLocked) {
+            setPrs((prev) => {
+              if (prev.find(p => String(p.id) === String(msg.pr.id))) return prev;
+              return [msg.pr, ...prev];
+            });
+            
+            setNotifications((prev) => [
+              { id: Date.now(), team: msg.pr.team, title: msg.pr.title, pr: msg.pr },
+              ...prev,
+            ]);
+
+            const toastId = Date.now();
+            setToasts((prev) => [...prev, { id: toastId, text: `${msg.pr.team} submitted a PR` }]);
+            setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== toastId)), 4000);
+            
+          } else if (msg.type === "status_update") {
+            setPrs((prev) =>
+              prev.map((p) =>
+                String(p.id) === String(msg.prId)
+                  ? { ...p, status: msg.status, mergedCount: msg.newCount || p.mergedCount }
+                  : p
+              )
+            );
+          } else if (msg.type === "teams_online") {
+            setTeamsOnline(msg.count);
+          }
+        } catch (e) {
+          console.error("WebSocket message error:", e);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log("WebSocket Disconnected. Reconnecting in 3s...");
+        reconnectTimer = setTimeout(connectWebSocket, 3000);
+      };
+      
+      ws.onerror = () => {
+        ws.close();
+      };
     };
-    window.__gh_ws.handlers.push(handler);
-
+    connectWebSocket();
     return () => {
-      window.__gh_ws.handlers = window.__gh_ws.handlers.filter(
-        (h) => h !== handler,
-      );
+      if (ws) {
+        ws.onclose = null; 
+        ws.close();
+      }
+      clearTimeout(reconnectTimer);
     };
   }, [loadData, isLocked]);
 
   const handleApprove = async (prId, comment) => {
-    setPrs((prev) =>
-      prev.map((p) =>
-        p.id === prId
-          ? { ...p, status: "merged", mergedCount: (p.mergedCount || 0) + 1 }
-          : p,
-      ),
-    );
+    const targetPr = prs.find(p => p.id === prId);
+    if (!targetPr) return;
+
     setSelected(null);
-    const toastId = Date.now();
-    setToasts((prev) => [
-      ...prev,
-      {
-        id: toastId,
-        text: (
-          <>
-            <Check size={16} className="inline mr-2" /> PR Approved
-          </>
-        ),
-      },
-    ]);
-    setTimeout(
-      () => setToasts((prev) => prev.filter((t) => t.id !== toastId)),
-      3000,
-    );
+    
     try {
-      await fetch(`${API_CONFIG.BASE}/pr/${API_CONFIG.REPO_NAME}/${prId}/approve`, { method: 'POST', body: JSON.stringify({ comment }) });
-    } catch (e) {}
+      const response = await fetch(`${API_CONFIG.BASE}/pr/${targetPr.repo}/${prId}/approve`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ comment: comment || "" }) 
+      });
+
+      if (response.ok) {
+        setPrs((prev) => prev.map((p) => String(p.id) === String(prId) ? { ...p, status: "merged", mergedCount: (p.mergedCount || 0) + 1 } : p));
+
+        const toastId = Date.now();
+        setToasts((prev) => [...prev, { id: toastId, text: (<><Check size={16} className="inline mr-2" /> PR Approved on GitHub!</>) }]);
+        setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== toastId)), 3000);
+      } else {
+        const errorData = await response.json();
+        alert(`GitHub rejected the merge: ${errorData.detail}`);
+      }
+    } catch (e) {
+      console.error("Network error:", e);
+    }
   };
 
   const handleReject = async (prId, comment) => {
-    setPrs((prev) =>
-      prev.map((p) => (p.id === prId ? { ...p, status: "rejected" } : p)),
-    );
+    const targetPr = prs.find(p => p.id === prId);
+    if (!targetPr) return;
+
     setSelected(null);
-    const toastId = Date.now();
-    setToasts((prev) => [
-      ...prev,
-      {
-        id: toastId,
-        text: (
-          <>
-            <Ban size={16} className="inline mr-2" /> PR Rejected
-          </>
-        ),
-      },
-    ]);
-    setTimeout(
-      () => setToasts((prev) => prev.filter((t) => t.id !== toastId)),
-      3000,
-    );
+    
     try {
-      await fetch(`${API_CONFIG.BASE}/pr/${API_CONFIG.REPO_NAME}/${prId}/reject`, { method: 'POST', body: JSON.stringify({ comment }) });
-    } catch (e) {}
+      const response = await fetch(`${API_CONFIG.BASE}/pr/${targetPr.repo}/${prId}/reject`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ comment: comment || "" }) 
+      });
+
+      if (response.ok) {
+        setPrs((prev) => prev.map((p) => String(p.id) === String(prId) ? { ...p, status: "rejected" } : p));
+
+        const toastId = Date.now();
+        setToasts((prev) => [...prev, { id: toastId, text: (<><Ban size={16} className="inline mr-2" /> PR Rejected & Closed</>) }]);
+        setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== toastId)), 3000);
+      } else {
+        const errorData = await response.json();
+        alert(`GitHub failed to close PR: ${errorData.detail}`);
+      }
+    } catch (e) {
+      console.error("Network error:", e);
+    }
   };
 
   const allTeamsMap = {};
@@ -180,23 +181,20 @@ export default function App() {
     if (!allTeamsMap[pr.team]) {
       allTeamsMap[pr.team] = {
         team: pr.team,
-        mergedCount: pr.mergedCount || 0,
+        mergedCount: 0,
         members: pr.members || [],
       };
-    } else {
-      allTeamsMap[pr.team].mergedCount = Math.max(
-        allTeamsMap[pr.team].mergedCount,
-        pr.mergedCount || 0,
-      );
-      if (!allTeamsMap[pr.team].members?.length && pr.members) {
-        allTeamsMap[pr.team].members = pr.members;
-      }
+    }
+    if (pr.status === "merged") {
+      allTeamsMap[pr.team].mergedCount += 1;
+    }
+    if (!allTeamsMap[pr.team].members?.length && pr.members) {
+      allTeamsMap[pr.team].members = pr.members;
     }
   });
   const sortedTeams = Object.values(allTeamsMap).sort(
     (a, b) => b.mergedCount - a.mergedCount,
   );
-
   const filteredPRs = prs
     .filter((pr) => {
       if (statusFilter === "all") return true;
