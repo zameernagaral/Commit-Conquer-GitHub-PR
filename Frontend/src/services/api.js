@@ -1,6 +1,6 @@
 export const API_CONFIG = {
-  BASE: import.meta.env.VITE_API_URL || "https://commit-conquer-github-pr.onrender.com/api",
-  WS:   import.meta.env.VITE_WS_URL  || "wss://commit-conquer-github-pr.onrender.com/api/live",
+  BASE: import.meta.env.VITE_API_URL || "http://localhost:8000/api",
+  WS:   import.meta.env.VITE_WS_URL  || "ws://localhost:8000/api/live",
 };
 
 async function apiFetch(path, init = {}, adminToken = "") {
@@ -55,6 +55,8 @@ export const updateTeam       = (id, body, tk) => apiFetch(`/teams/${id}`, { met
 export const deleteTeam       = (id, token)    => apiFetch(`/teams/${id}`, { method: "DELETE" }, token);
 export const addTeamMember    = (id, username, token) => apiFetch(`/teams/${id}/members`, { method: "POST", body: JSON.stringify({ username }) }, token);
 export const removeTeamMember = (id, username, token) => apiFetch(`/teams/${id}/members/${username}`, { method: "DELETE" }, token);
+export const setTeamScore     = (id, score, note, replace, token) =>
+  apiFetch(`/teams/${id}/score`, { method: "PATCH", body: JSON.stringify({ score: Number(score), note, replace }) }, token);
 
 // Admin
 export const fetchAdminConfig = (token)        => apiFetch("/admin/config", {}, token);

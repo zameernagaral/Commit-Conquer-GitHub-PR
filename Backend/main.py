@@ -138,6 +138,12 @@ class ManualScoreUpdate(BaseModel):
     note:         str = ""
 
 
+class TeamScoreUpdate(BaseModel):
+    score:   int
+    note:    str  = ""
+    replace: bool = True   # True = set directly, False = add on top
+
+
 # ── WebSocket ─────────────────────────────────────────────────────────────────
 
 class WsManager:
@@ -1067,6 +1073,45 @@ async def update_team(
         raise HTTPException(400, "Nothing to update")
     await teams_col.update_one({"_id": ObjectId(team_id)}, {"$set": update})
     return {"status": "ok"}
+
+
+@app.patch("/api/teams/{team_id}/score")
+async def set_team_score(
+    team_id: str,
+    body: TeamScoreUpdate,
+    x_admin_token: str = Header("", alias="x-admin-token"),
+):
+    """Admin manually sets or adds a score to a team."""
+    check_admin(x_admin_token)
+    team = await teams_col.find_one({"_id": ObjectId(team_id)})
+    if not team:
+        raise HTTPException(404, "Team not found")
+
+    current   = team.get("total_score", 0)
+    new_score = body.score if body.replace else current + body.score
+
+    await teams_col.update_one(
+        {"_id": ObjectId(team_id)},
+        {
+            "$set": {
+                "total_score":    new_score,
+                "manual_score":   new_score,
+                "manual_note":    body.note,
+                "updated_at":     now_iso(),
+            }
+        },
+    )
+
+    await log_activity(
+        "manual_team_score",
+        f"Admin set score {new_score} for team '{team.get('team_name', team_id)}'. Note: {body.note}",
+        "admin",
+    )
+    await manager.broadcast(
+        {"type": "team_score_update", "team_id": team_id, "total_score": new_score}
+    )
+
+    return {"status": "ok", "team_id": team_id, "total_score": new_score}
 
 
 @app.delete("/api/teams/{team_id}")

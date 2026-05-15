@@ -7,7 +7,7 @@ import {
   fetchTeams, createTeam, deleteTeam, addTeamMember, removeTeamMember,
   fetchAdminConfig, updateAdminConfig, recalculateAll, fetchActivity,
   fetchPendingScores, approveScore, rejectScore, deleteIssue, createIssue,
-  banUser, exportCSV, fetchBanned, unbanUser,
+  banUser, exportCSV, fetchBanned, unbanUser, setTeamScore,
 } from "./services/api";
 import {
   GitPullRequest, Trophy, Settings, Menu, X as XIcon, Clock,
@@ -61,6 +61,8 @@ export default function App() {
   const [banInput,      setBanInput]     = useState("");
   const [newTeam,       setNewTeam]      = useState({ name: "", members: "" });
   const [newIssue,      setNewIssue]     = useState({ issue_number: "", title: "", repo: "commit-conquer", points: 10, difficulty: "medium" });
+  const [lbMode,        setLbMode]       = useState("team");   // "team" | "individual"
+  const [teamScoreEdit, setTeamScoreEdit]= useState({});       // { [teamId]: { score: "", note: "" } }
 
   // ── Timer ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -159,6 +161,12 @@ export default function App() {
               updated.forEach((r, i) => { r.rank = i + 1; });
               return [...updated];
             });
+          }
+
+          if (msg.type === "team_score_update") {
+            setTeams(prev => prev.map(t =>
+              t._id === msg.team_id ? { ...t, total_score: msg.total_score } : t
+            ).sort((a, b) => (b.total_score ?? 0) - (a.total_score ?? 0)));
           }
         } catch {}
       };
@@ -317,6 +325,22 @@ export default function App() {
     } catch (e) { toast(`Error: ${e.message}`, "error"); }
   };
 
+  const handleSetTeamScore = async (teamId, replace) => {
+    const edit = teamScoreEdit[teamId] || {};
+    const score = Number(edit.score);
+    if (!score && score !== 0) return;
+    try {
+      await setTeamScore(teamId, score, edit.note || "", replace, adminToken);
+      setTeams(prev => prev.map(t =>
+        t._id === teamId
+          ? { ...t, total_score: replace ? score : (t.total_score ?? 0) + score }
+          : t
+      ).sort((a, b) => (b.total_score ?? 0) - (a.total_score ?? 0)));
+      setTeamScoreEdit(p => ({ ...p, [teamId]: { score: "", note: "" } }));
+      toast(`Team score updated!`, "success");
+    } catch (e) { toast(`Error: ${e.message}`, "error"); }
+  };
+
   const handleCreateIssue = async () => {
     if (!newIssue.issue_number || !newIssue.title) return;
     try {
@@ -426,42 +450,139 @@ export default function App() {
         {/* ── Leaderboard ── */}
         {currentView === "leaderboard" && (
           <div style={{ padding: "0 8px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
               <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text-main)" }}>Leaderboard</h2>
-              <button onClick={loadLeaderboard} style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid var(--border-light)", background: "var(--bg-card)", cursor: "pointer", fontSize: 12, color: "var(--text-main)" }}>
-                <RefreshCw size={13} style={{ display: "inline", marginRight: 4 }} />Refresh
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {["team", "individual"].map(m => (
+                  <button key={m} onClick={() => setLbMode(m)}
+                    style={{ padding: "7px 16px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                      border: "1px solid var(--border-light)",
+                      background: lbMode === m ? "#4f6ef7" : "var(--bg-card)",
+                      color: lbMode === m ? "#fff" : "var(--text-muted)" }}>
+                    {m === "team" ? "Teams" : "Individuals"}
+                  </button>
+                ))}
+                <button onClick={() => { loadLeaderboard(); loadTeams(); }}
+                  style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid var(--border-light)", background: "var(--bg-card)", cursor: "pointer", fontSize: 12, color: "var(--text-main)" }}>
+                  <RefreshCw size={13} style={{ display: "inline", marginRight: 4 }} />Refresh
+                </button>
+              </div>
             </div>
-            <div style={{ border: "1px solid var(--border-light)", borderRadius: 12, overflow: "hidden", background: "var(--bg-card)" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid var(--border-light)", background: "var(--bg-main)" }}>
-                    {["#", "Participant", "Team", "Total", "Pipeline", "Bonus", "PRs", "Merged", "Issues"].map(h => (
-                      <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {leaderboard.length === 0 ? (
-                    <tr><td colSpan={9} style={{ padding: 40, textAlign: "center", ...S }}>No data yet. Waiting for participants...</td></tr>
-                  ) : leaderboard.map((p, i) => (
-                    <tr key={p.github_username} style={{ borderBottom: "1px solid var(--border-light)" }}>
-                      <td style={{ padding: "12px 14px", fontWeight: 700 }}>
-                        {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${p.rank}`}
-                      </td>
-                      <td style={{ padding: "12px 14px", fontWeight: 600 }}>@{p.github_username}</td>
-                      <td style={{ padding: "12px 14px", ...S }}>{p.team_name || "—"}</td>
-                      <td style={{ padding: "12px 14px", fontWeight: 800, fontSize: 15 }}>{p.total_score}</td>
-                      <td style={{ padding: "12px 14px", ...S }}>{p.pipeline_score ?? 0}</td>
-                      <td style={{ padding: "12px 14px", color: "#22c55e" }}>+{p.bonus_score ?? 0}</td>
-                      <td style={{ padding: "12px 14px", ...S }}>{p.total_prs ?? 0}</td>
-                      <td style={{ padding: "12px 14px", color: "#a855f7" }}>{p.merged_prs ?? 0}</td>
-                      <td style={{ padding: "12px 14px", ...S }}>{p.issues_solved ?? 0}</td>
+
+            {/* Team leaderboard */}
+            {lbMode === "team" && (
+              <>
+                {/* Inline admin login for score editing */}
+                {!adminAuthed && (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, background: "var(--bg-card)", border: "1px solid var(--border-light)", borderRadius: 10, padding: "10px 14px" }}>
+                    <Lock size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+                    <input
+                      type="password"
+                      placeholder="Admin token to edit scores"
+                      value={adminToken}
+                      onChange={e => setAdminToken(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && adminLogin()}
+                      style={{ flex: 1, padding: "6px 10px", borderRadius: 7, border: "1px solid var(--border-light)", fontSize: 13, outline: "none" }}
+                    />
+                    <button onClick={adminLogin}
+                      style={{ padding: "6px 14px", borderRadius: 7, border: "none", background: "#4f6ef7", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                      Unlock
+                    </button>
+                  </div>
+                )}
+                {adminAuthed && (
+                  <div style={{ fontSize: 12, color: "#22c55e", marginBottom: 10, paddingLeft: 2, fontWeight: 600 }}>
+                    Admin unlocked — set scores below
+                  </div>
+                )}
+                <div style={{ border: "1px solid var(--border-light)", borderRadius: 12, overflow: "hidden", background: "var(--bg-card)" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid var(--border-light)", background: "var(--bg-main)" }}>
+                        {["#", "Team", "Members", "Score", ...(adminAuthed ? ["Set Score"] : [])].map(h => (
+                          <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...teams].sort((a, b) => (b.total_score ?? 0) - (a.total_score ?? 0)).length === 0 ? (
+                        <tr><td colSpan={adminAuthed ? 5 : 4} style={{ padding: 40, textAlign: "center", ...S }}>No teams yet.</td></tr>
+                      ) : [...teams].sort((a, b) => (b.total_score ?? 0) - (a.total_score ?? 0)).map((t, i) => (
+                        <tr key={t._id} style={{ borderBottom: "1px solid var(--border-light)" }}>
+                          <td style={{ padding: "14px 14px", fontWeight: 700, fontSize: 16 }}>
+                            {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}
+                          </td>
+                          <td style={{ padding: "14px 14px", fontWeight: 700, fontSize: 15, color: "var(--text-main)" }}>{t.team_name}</td>
+                          <td style={{ padding: "14px 14px" }}>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                              {(t.members || []).map(m => (
+                                <span key={m} style={{ background: "var(--bg-main)", border: "1px solid var(--border-light)", borderRadius: 6, padding: "2px 7px", fontSize: 11, color: "var(--text-muted)" }}>@{m}</span>
+                              ))}
+                            </div>
+                          </td>
+                          <td style={{ padding: "14px 14px", fontWeight: 900, fontSize: 20, color: "#4f6ef7" }}>{t.total_score ?? 0}</td>
+                          {adminAuthed && (
+                            <td style={{ padding: "10px 14px" }}>
+                              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                <input
+                                  type="number"
+                                  placeholder="pts"
+                                  value={(teamScoreEdit[t._id] || {}).score ?? ""}
+                                  onChange={e => setTeamScoreEdit(p => ({ ...p, [t._id]: { ...(p[t._id] || {}), score: e.target.value } }))}
+                                  style={{ width: 70, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border-light)", fontSize: 13, outline: "none" }}
+                                />
+                                <button onClick={() => handleSetTeamScore(t._id, true)}
+                                  style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: "#4f6ef7", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                                  Set
+                                </button>
+                                <button onClick={() => handleSetTeamScore(t._id, false)}
+                                  style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: "#22c55e", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                                  +Add
+                                </button>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+
+            {/* Individual leaderboard */}
+            {lbMode === "individual" && (
+              <div style={{ border: "1px solid var(--border-light)", borderRadius: 12, overflow: "hidden", background: "var(--bg-card)" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid var(--border-light)", background: "var(--bg-main)" }}>
+                      {["#", "Participant", "Team", "Total", "Pipeline", "Bonus", "PRs", "Merged", "Issues"].map(h => (
+                        <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase" }}>{h}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {leaderboard.length === 0 ? (
+                      <tr><td colSpan={9} style={{ padding: 40, textAlign: "center", ...S }}>No data yet. Waiting for participants...</td></tr>
+                    ) : leaderboard.map((p, i) => (
+                      <tr key={p.github_username} style={{ borderBottom: "1px solid var(--border-light)" }}>
+                        <td style={{ padding: "12px 14px", fontWeight: 700 }}>
+                          {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${p.rank}`}
+                        </td>
+                        <td style={{ padding: "12px 14px", fontWeight: 600 }}>@{p.github_username}</td>
+                        <td style={{ padding: "12px 14px", ...S }}>{p.team_name || "—"}</td>
+                        <td style={{ padding: "12px 14px", fontWeight: 800, fontSize: 15 }}>{p.total_score}</td>
+                        <td style={{ padding: "12px 14px", ...S }}>{p.pipeline_score ?? 0}</td>
+                        <td style={{ padding: "12px 14px", color: "#22c55e" }}>+{p.bonus_score ?? 0}</td>
+                        <td style={{ padding: "12px 14px", ...S }}>{p.total_prs ?? 0}</td>
+                        <td style={{ padding: "12px 14px", color: "#a855f7" }}>{p.merged_prs ?? 0}</td>
+                        <td style={{ padding: "12px 14px", ...S }}>{p.issues_solved ?? 0}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
@@ -648,10 +769,10 @@ export default function App() {
                       <div style={{ ...S }}>No teams yet.</div>
                     ) : teams.map(team => (
                       <div key={team._id} style={{ background: "var(--bg-main)", borderRadius: 10, padding: 14, marginBottom: 10 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <div>
-                            <div style={{ fontWeight: 600 }}>{team.team_name}</div>
-                            <div style={{ ...S, marginTop: 4 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 600, marginBottom: 6 }}>{team.team_name}</div>
+                            <div style={{ ...S, marginBottom: 8 }}>
                               {(team.members || []).map(m => (
                                 <span key={m} style={{ background: "var(--bg-card)", border: "1px solid var(--border-light)", borderRadius: 6, padding: "2px 8px", fontSize: 11, marginRight: 4 }}>
                                   @{m}
@@ -660,9 +781,33 @@ export default function App() {
                                 </span>
                               ))}
                             </div>
+                            {/* Manual score controls */}
+                            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                              <input
+                                type="number"
+                                placeholder="Score"
+                                value={(teamScoreEdit[team._id] || {}).score ?? ""}
+                                onChange={e => setTeamScoreEdit(p => ({ ...p, [team._id]: { ...(p[team._id] || {}), score: e.target.value } }))}
+                                style={{ ...inp, width: 90, flex: "none" }}
+                              />
+                              <input
+                                placeholder="Note (optional)"
+                                value={(teamScoreEdit[team._id] || {}).note ?? ""}
+                                onChange={e => setTeamScoreEdit(p => ({ ...p, [team._id]: { ...(p[team._id] || {}), note: e.target.value } }))}
+                                style={{ ...inp, flex: 1, minWidth: 120 }}
+                              />
+                              <button onClick={() => handleSetTeamScore(team._id, true)}
+                                style={{ ...btn("#4f6ef7"), padding: "7px 12px", fontSize: 12, whiteSpace: "nowrap" }}>
+                                Set Score
+                              </button>
+                              <button onClick={() => handleSetTeamScore(team._id, false)}
+                                style={{ ...btn("#22c55e"), padding: "7px 12px", fontSize: 12, whiteSpace: "nowrap" }}>
+                                + Add
+                              </button>
+                            </div>
                           </div>
-                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                            <span style={{ fontWeight: 700, color: "#4f6ef7" }}>{team.total_score ?? 0} pts</span>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center", marginLeft: 12 }}>
+                            <span style={{ fontWeight: 700, color: "#4f6ef7", fontSize: 18 }}>{team.total_score ?? 0} pts</span>
                             <button onClick={() => handleDeleteTeam(team._id)}
                               style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444" }}>
                               <Trash2 size={14} />
